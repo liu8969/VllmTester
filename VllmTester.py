@@ -7,7 +7,7 @@ from typing import List, Dict, Union, Optional
 
 # 默认配置
 DEFAULT_ENDPOINT = "http://localhost:8000/v1/completions"
-DEFAULT_MODEL = "mistralai/Mistral-7B-Instruct-v0.1"
+DEFAULT_MODEL = "DEFAULT"
 DEFAULT_HEADERS = {"Content-Type": "application/json"}
 
 def load_prompts_from_file(filename: str) -> List[str]:
