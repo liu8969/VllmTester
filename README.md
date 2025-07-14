@@ -96,3 +96,5 @@ python VllmTester.py \
 
 💾 结果已保存到: vllm_results.json
 ~~~
+## 个人使用5060ti qwen3模型得到的一些数据
+    https://github.com/liu8969/qwen_rtx5060ti_concurrency_bench
