@@ -9,7 +9,7 @@
 # 安装VllmTester
 
 ### 克隆仓库
-    https://github.com/liu8969/VllmTester.git
+    git clone https://github.com/liu8969/VllmTester.git
     cd VllmTester
 ### 安装依赖
     pip install -r requirements.txt
