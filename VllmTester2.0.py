@@ -6,10 +6,8 @@ import argparse
 import math
 import os
 import matplotlib.pyplot as plt
-import matplotlib as mpl
-from matplotlib.font_manager import FontProperties
 import numpy as np
-from typing import List, Dict, Union, Optional, Tuple
+from typing import List, Dict, Union, Optional
 from rich.progress import Progress
 from rich.table import Table
 from rich.console import Console
@@ -19,13 +17,20 @@ DEFAULT_ENDPOINT = "http://localhost:8000/v1/completions"
 DEFAULT_MODEL = "DEFAULT"
 DEFAULT_HEADERS = {"Content-Type": "application/json"}
 
+def create_output_directory(model_name: str) -> str:
+    """创建输出目录，格式为: 模型名_年月日_时分秒"""
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    dir_name = f"{model_name}_{timestamp}"
+    os.makedirs(dir_name, exist_ok=True)
+    return dir_name
+
 def load_prompts_from_file(filename: str) -> List[str]:
     """从文件加载提示词列表"""
     try:
         with open(filename, 'r', encoding='utf-8') as f:
             return [line.strip() for line in f if line.strip()]
     except Exception as e:
-        print(f"❌ 无法加载提示词文件: {e}")
+        print(f"❌ Failed to load prompt file: {e}")
         return []
 
 async def send_vllm_request(
@@ -153,7 +158,7 @@ async def batch_request_vllm(
         task_progress = None
         if progress:
             task_progress = progress.add_task(
-                f"[cyan]并发 {max_concurrent} - 发送请求...",
+                f"[cyan]Concurrency {max_concurrent} - Sending requests...",
                 total=len(prompts))
         for idx, prompt in enumerate(prompts):
             task = asyncio.create_task(
@@ -176,9 +181,9 @@ def save_results_to_file(results: List[Dict], filename: str):
     try:
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
-        print(f"💾 结果已保存到: {filename}")
+        print(f"💾 Results saved to: {filename}")
     except Exception as e:
-        print(f"❌ 保存结果失败: {e}")
+        print(f"❌ Failed to save results: {e}")
 
 def calculate_statistics(results: List[Dict], total_time: float) -> Dict:
     """计算性能统计数据"""
@@ -196,6 +201,10 @@ def calculate_statistics(results: List[Dict], total_time: float) -> Dict:
         "max_latency": 0,
         "avg_tokens_per_request": 0
     }
+    
+    if not results:  # 处理空结果的情况
+        return stats
+    
     success_results = [r for r in results if "response" in r]
     error_results = [r for r in results if "error" in r]
     stats["success_count"] = len(success_results)
@@ -224,29 +233,30 @@ def print_statistics(stats: Dict, concurrency: int):
     """打印性能统计信息"""
     console = Console()
     # 创建统计表格
-    stats_table = Table(title=f"📊 并发 {concurrency} 性能摘要 (请求数: {stats['total_requests']})", show_header=False, style="blue")
-    stats_table.add_row("总请求数", f"{stats['total_requests']}")
-    stats_table.add_row("成功请求", f"{stats['success_count']} ({stats['success_count']/stats['total_requests']*100:.1f}%)")
-    stats_table.add_row("失败请求", f"{stats['error_count']} ({stats['error_count']/stats['total_requests']*100:.1f}%)")
-    stats_table.add_row("总耗时", f"{stats['total_time']:.2f}秒")
-    stats_table.add_row("总生成token数", f"{stats['total_tokens']}")
+    stats_table = Table(title=f"📊 Concurrency {concurrency} Summary (Requests: {stats['total_requests']})", 
+                       show_header=False, style="blue")
+    stats_table.add_row("Total Requests", f"{stats['total_requests']}")
+    stats_table.add_row("Successful", f"{stats['success_count']} ({stats['success_count']/stats['total_requests']*100:.1f}%)")
+    stats_table.add_row("Failed", f"{stats['error_count']} ({stats['error_count']/stats['total_requests']*100:.1f}%)")
+    stats_table.add_row("Total Time", f"{stats['total_time']:.2f} seconds")
+    stats_table.add_row("Total Tokens", f"{stats['total_tokens']}")
     
     if stats['total_time'] > 0:
-        stats_table.add_row("请求吞吐量", f"{stats['requests_per_sec']:.2f} 请求/秒")
+        stats_table.add_row("Request Throughput", f"{stats['requests_per_sec']:.2f} req/sec")
         if stats['total_tokens'] > 0:
-            stats_table.add_row("Token吞吐量", f"{stats['tokens_per_sec']:.2f} token/秒")
-            stats_table.add_row("单个请求平均token吞吐量",
-                              f"{stats['tokens_per_sec'] / concurrency:.2f} token/秒/连接" if concurrency > 0 else "N/A")
+            stats_table.add_row("Token Throughput", f"{stats['tokens_per_sec']:.2f} tokens/sec")
+            stats_table.add_row("Per-request Token Throughput",
+                              f"{stats['tokens_per_sec'] / concurrency:.2f} tokens/sec/conn" if concurrency > 0 else "N/A")
     
     if stats['success_count'] > 0:
-        stats_table.add_row("平均生成token数",
-                          f"{stats['avg_tokens_per_request']:.1f} token/请求")
+        stats_table.add_row("Avg Tokens per Request",
+                          f"{stats['avg_tokens_per_request']:.1f} tokens/req")
     
     # 延迟统计
-    latency_table = Table(title="⏱ 延迟统计", show_header=False, style="green")
-    latency_table.add_row("平均延迟", f"{stats['avg_latency']:.3f}秒")
-    latency_table.add_row("最小延迟", f"{stats['min_latency']:.3f}秒")
-    latency_table.add_row("最大延迟", f"{stats['max_latency']:.3f}秒")
+    latency_table = Table(title="⏱ Latency Statistics", show_header=False, style="green")
+    latency_table.add_row("Average Latency", f"{stats['avg_latency']:.3f} seconds")
+    latency_table.add_row("Min Latency", f"{stats['min_latency']:.3f} seconds")
+    latency_table.add_row("Max Latency", f"{stats['max_latency']:.3f} seconds")
     
     console.print(stats_table)
     console.print(latency_table)
@@ -258,7 +268,7 @@ def generate_performance_plot(concurrency_levels: List[int], stats_list: List[Di
     
     # 准备数据
     tokens_per_sec = [s["tokens_per_sec"] for s in stats_list]
-    per_request_tokens_per_sec = [s["tokens_per_sec"] / c for s, c in zip(stats_list, concurrency_levels)]
+    per_request_tokens_per_sec =[s["tokens_per_sec"] / c for s, c in zip(stats_list, concurrency_levels)]
     avg_latency = [s["avg_latency"] for s in stats_list]
     
     # 设置图表标题和标签（英文）
@@ -353,13 +363,14 @@ def run_concurrency_test(
     concurrency: int,
     model: str,
     endpoint: str,
-    requests_per_concurrency: int,  # 新增参数：每个并发的基准请求数
+    output_dir: str,  # 新增参数：输出目录
+    requests_per_concurrency: int,
     **request_params
 ) -> Dict:
     """运行指定并发级别的测试，请求数与并发数成正比"""
     # 计算该并发级别下实际的请求数量
     actual_num_requests = concurrency * requests_per_concurrency
-    print(f"\n🔁 开始测试并发数: {concurrency} (请求数: {actual_num_requests})")
+    print(f"\n🔁 Starting test for concurrency: {concurrency} (Requests: {actual_num_requests})")
     
     # 准备该并发级别所需的提示词
     if len(prompts) < actual_num_requests:
@@ -370,7 +381,6 @@ def run_concurrency_test(
     
     # 使用Rich进度条
     try:
-        from rich.progress import Progress
         progress = Progress()
     except ImportError:
         progress = None
@@ -403,62 +413,88 @@ def run_concurrency_test(
     
     total_time = time.time() - start_time
     
-    # 计算统计信息
+    # 计算统计信息 - 确保stats不为None
     stats = calculate_statistics(results, total_time)
-    stats["actual_requests"] = actual_num_requests  # 记录实际请求数
+    if stats is None:
+        print(f"⚠️ Warning: Statistics calculation failed for concurrency {concurrency}")
+        stats = {
+            "total_requests": len(results),
+            "total_time": total_time,
+            "success_count": 0,
+            "error_count": 0,
+            "total_tokens": 0,
+            "requests_per_sec": 0,
+            "tokens_per_sec": 0,
+            "per_request_tokens_per_sec": 0,
+            "avg_latency": 0,
+            "min_latency": 0,
+            "max_latency": 0,
+            "avg_tokens_per_request": 0
+        }
+    
+    # 添加实际请求数到统计信息
+    stats["actual_requests"] = actual_num_requests
     
     # 打印统计信息
     print_statistics(stats, concurrency)
     
-    # 保存结果
-    output_file = f"results_{model}_concurrency_{concurrency}.json"
+    # 保存结果到输出目录
+    output_file = os.path.join(output_dir, f"results_{model}_concurrency_{concurrency}.json")
     save_results_to_file(results, output_file)
     
     return stats
 
 def main():
     # 创建命令行参数解析器
-    parser = argparse.ArgumentParser(description="vLLM 并发性能测试工具")
+    parser = argparse.ArgumentParser(description="vLLM Concurrency Benchmark Tool")
     
     # 基本参数
-    parser.add_argument("--num-requests", type=int, default=0, help="请求总数 (将被 --requests-per-concurrency 覆盖)")
-    parser.add_argument("--concurrency", type=str, default="1,2,4,8", help="并发数测试范围 (如: '1,4,8' 或 '1-8')")
-    parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="模型名称")
-    parser.add_argument("--endpoint", type=str, default=DEFAULT_ENDPOINT, help="API端点")
-    parser.add_argument("--prompt-file", type=str, help="包含提示词的文件路径（每行一个）")
-    parser.add_argument("--output-plot", type=str, default="performance_plot.png", help="性能图表文件名")
+    parser.add_argument("--num-requests", type=int, default=0, help="Total requests (overridden by --requests-per-concurrency)")
+    parser.add_argument("--concurrency", type=str, default="1,2,4,8", help="Concurrency levels (e.g., '1,4,8' or '1-8')")
+    parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="Model name")
+    parser.add_argument("--endpoint", type=str, default=DEFAULT_ENDPOINT, help="API endpoint")
+    parser.add_argument("--prompt-file", type=str, help="Path to file containing prompts (one per line)")
+    parser.add_argument("--output-plot", type=str, default="performance_plot.png", help="Performance chart filename")
     
     # 新增参数：每个并发的基准请求数
     parser.add_argument("--requests-per-concurrency", type=int, default=10,
-                        help="每个并发级别的基准请求数 (实际请求数 = 并发数 × 此值)")
+                        help="Base requests per concurrency level (actual = concurrency × this)")
     
     # 模型参数
-    parser.add_argument("--max-tokens", type=int, default=256, help="每个响应的最大token数")
-    parser.add_argument("--temperature", type=float, default=0.7, help="采样温度 (0-2)")
-    parser.add_argument("--top-p", type=float, default=0.95, help="核心采样概率 (0-1)")
-    parser.add_argument("--stop", type=str, nargs="+", help="停止序列 (例如 '\\n' '###')")
-    parser.add_argument("--presence-penalty", type=float, default=0.0, help="主题重复惩罚 (-2-2)")
-    parser.add_argument("--frequency-penalty", type=float, default=0.0, help="词语重复惩罚 (-2-2)")
-    parser.add_argument("--best-of", type=int, default=1, help="返回最佳结果的数量")
-    parser.add_argument("--timeout", type=int, default=120, help="单个请求超时时间（秒）")
-    parser.add_argument("--retries", type=int, default=1, help="失败请求重试次数")
+    parser.add_argument("--max-tokens", type=int, default=256, help="Max tokens per response")
+    parser.add_argument("--temperature", type=float, default=0.7, help="Sampling temperature (0-2)")
+    parser.add_argument("--top-p", type=float, default=0.95, help="Nucleus sampling probability (0-1)")
+    parser.add_argument("--stop", type=str, nargs="+", help="Stop sequences (e.g., '\\n' '###')")
+    parser.add_argument("--presence-penalty", type=float, default=0.0, help="Topic repetition penalty (-2-2)")
+    parser.add_argument("--frequency-penalty", type=float, default=0.0, help="Word repetition penalty (-2-2)")
+    parser.add_argument("--best-of", type=int, default=1, help="Number of best results to return")
+    parser.add_argument("--timeout", type=int, default=120, help="Request timeout in seconds")
+    parser.add_argument("--retries", type=int, default=1, help="Number of retries for failed requests")
     
     args = parser.parse_args()
     
+    # 创建输出目录
+    output_dir = create_output_directory(args.model)
+    print(f"📂 All results will be saved in: {output_dir}")
+    
     # 计算最大并发级别所需的提示词数量
-    max_concurrency = max(
-        [int(x) for x in args.concurrency.split(',')] 
-        if ',' in args.concurrency else 
-        [int(args.concurrency)]
-    )
+    if ',' in args.concurrency:
+        concurrency_list = args.concurrency.split(',')
+        max_concurrency = max(map(int, concurrency_list))
+    elif '-' in args.concurrency:
+        start, end = map(int, args.concurrency.split('-'))
+        max_concurrency = end
+    else:
+        max_concurrency = int(args.concurrency)
+    
     max_requests = max_concurrency * args.requests_per_concurrency
     
     # 准备提示词
     if args.prompt_file:
         prompts = load_prompts_from_file(args.prompt_file)
         if not prompts:
-            print("⚠️ 使用默认提示词")
-            prompts = [f"测试提示 #{i}" for i in range(max_requests)]
+            print("⚠️ Using default prompts")
+            prompts = [f"Test prompt #{i}" for i in range(max_requests)]
         else:
             # 如果文件中的提示词少于所需数量，循环使用
             if len(prompts) < max_requests:
@@ -466,7 +502,7 @@ def main():
             else:
                 prompts = prompts[:max_requests]  # 只取前max_requests个
     else:
-        prompts = [f"测试提示 #{i}" for i in range(max_requests)]
+        prompts = [f"Test prompt #{i}" for i in range(max_requests)]
     
     # 准备请求参数
     request_params = {
@@ -493,29 +529,29 @@ def main():
         # 单个值
         concurrency_levels = [int(args.concurrency)]
     
-    print(f"🚀 启动 vLLM 并发性能测试")
-    print(f"├─ 模型: {args.model}")
-    print(f"├─ 端点: {args.endpoint}")
-    print(f"├─ 每个并发基准请求数: {args.requests_per_concurrency}")
-    print(f"├─ 最大请求数（最大并发时）: {max_requests}")
-    print(f"├─ 并发级别: {concurrency_levels}")
-    print(f"├─ 最大token数: {args.max_tokens}")
-    print(f"├─ 温度: {args.temperature}")
+    print(f"🚀 Starting vLLM Concurrency Benchmark")
+    print(f"├─ Model: {args.model}")
+    print(f"├─ Endpoint: {args.endpoint}")
+    print(f"├─ Base requests per concurrency: {args.requests_per_concurrency}")
+    print(f"├─ Max requests (at highest concurrency): {max_requests}")
+    print(f"├─ Concurrency levels: {concurrency_levels}")
+    print(f"├─ Max tokens: {args.max_tokens}")
+    print(f"├─ Temperature: {args.temperature}")
     print(f"├─ Top-p: {args.top_p}")
-    print(f"├─ 超时时间: {args.timeout}秒")
-    print(f"└─ 重试次数: {args.retries}")
+    print(f"├─ Timeout: {args.timeout} seconds")
+    print(f"└─ Retries: {args.retries}")
     
     if args.stop:
-        print(f"├─ 停止序列: {args.stop}")
+        print(f"├─ Stop sequences: {args.stop}")
     if args.best_of > 1:
         print(f"├─ Best-of: {args.best_of}")
     
-    print("\n📋 示例提示:")
+    print("\n📋 Sample prompts:")
     sample_count = min(3, len(prompts))
     for i, prompt in enumerate(prompts[:sample_count]):
         print(f"  {i+1}. {prompt[:80]}{'...' if len(prompt) > 80 else ''}")
     if len(prompts) > sample_count:
-        print(f"  ... 和另外 {len(prompts)-sample_count} 个提示")
+        print(f"  ... and {len(prompts)-sample_count} more")
     
     # 运行所有并发级别的测试
     all_stats = []
@@ -525,26 +561,39 @@ def main():
             concurrency=concurrency,
             model=args.model,
             endpoint=args.endpoint,
+            output_dir=output_dir,  # 传入输出目录
             requests_per_concurrency=args.requests_per_concurrency,
             **request_params
         )
         all_stats.append(stats)
     
-    # 生成性能对比图表
-    generate_performance_plot(concurrency_levels, all_stats, args.output_plot)
+    # 生成性能对比图表并保存到输出目录
+    plot_path = os.path.join(output_dir, args.output_plot)
+    generate_performance_plot(concurrency_levels, all_stats, plot_path)
     
     # 打印最终摘要
-    print("\n🎯 测试完成! 性能摘要:")
+    print("\n🎯 Benchmark completed! Performance summary:")
     for i, concurrency in enumerate(concurrency_levels):
         stats = all_stats[i]
-        print(f"并发 {concurrency} (请求数: {stats['actual_requests']}):")
-        print(f"  Token吞吐量: {stats['tokens_per_sec']:.2f} token/秒")
-        print(f"  单个请求吞吐量: {stats['tokens_per_sec'] / concurrency:.2f} token/秒/连接")
-        print(f"  平均延迟: {stats['avg_latency']:.3f}秒")
-        print(f"  请求吞吐量: {stats['requests_per_sec']:.2f} 请求/秒")
+        print(f"Concurrency {concurrency} (Requests: {stats['actual_requests']}):")
+        print(f"  Token Throughput: {stats['tokens_per_sec']:.2f} tokens/sec")
+        print(f"  Per-request Throughput: {stats['tokens_per_sec'] / concurrency:.2f} tokens/sec/conn")
+        print(f"  Average Latency: {stats['avg_latency']:.3f} seconds")
+        print(f"  Request Throughput: {stats['requests_per_sec']:.2f} requests/sec")
+    
+    # 保存汇总统计
+    summary_file = os.path.join(output_dir, "benchmark_summary.json")
+    with open(summary_file, 'w') as f:
+        json.dump({
+            "model": args.model,
+            "endpoint": args.endpoint,
+            "concurrency_levels": concurrency_levels,
+            "stats": all_stats
+        }, f, indent=2)
+    print(f"\n📊 Benchmark summary saved to: {summary_file}")
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n操作被用户中断")
+        print("\nOperation interrupted by user")
