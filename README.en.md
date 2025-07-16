@@ -1,3 +1,5 @@
+[English](https://github.com/liu8969/VllmTester/blob/main/README.en.md)
+[中文](https://github.com/liu8969/VllmTester/blob/main/README.md)
 
 # Features
 1. ⚡ Dynamic request scaling: Request count = Concurrency × Base requests

@@ -1,3 +1,6 @@
+
+[English](https://github.com/liu8969/VllmTester/blob/main/README.en.md)
+[中文](https://github.com/liu8969/VllmTester/blob/main/README.md)
 # 功能特点
 1. ⚡ 动态请求缩放：请求数 = 并发数 × 基准请求数
 2. 📊 彩色终端统计报表：使用 Rich 库提供美观的统计输出
@@ -9,7 +12,7 @@
 # 安装VllmTester
 
 ### 克隆仓库
-    git clone https://github.com/liu8969/VllmTester.git
+    https://github.com/liu8969/VllmTester.git
     cd VllmTester
 ### 安装依赖
     pip install -r requirements.txt
@@ -59,8 +62,11 @@
  --concurrency "1,2,4,8,16" \
  --requests-per-concurrency 4 \  
  --model Qwen3-32B-AWQ   \
+ --endpoint http://localhost:8000/v1/completions \
  --max-tokens 512   \
  --temperature 0.7   \
+ --top-p 0.95 \
+ --stop "\n" "###" \
  --timeout 180   \
  --retries 2   \
  --output-plot qwen_performance.png    
