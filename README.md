@@ -151,3 +151,4 @@
   请求吞吐量: 0.93 请求/秒
 
 ~~~
+![输出图表示例](https://github.com/liu8969/VllmTester/blob/main/performance_plot.png)
